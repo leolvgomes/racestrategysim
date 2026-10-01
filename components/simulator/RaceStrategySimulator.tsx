@@ -1,15 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DEFAULT_RACE_CONFIG } from "@/lib/simulation/constants";
 import { generateStrategies } from "@/lib/simulation/strategy-generator";
 import { simulateStrategies } from "@/lib/simulation/simulator";
 import type { RaceConfig, Stint, Strategy } from "@/lib/simulation/types";
+import { getRaceConfigWarnings } from "@/lib/simulation/validation";
 import { formatDelta, formatDuration } from "@/lib/simulation/formatters";
 import { CustomStrategyBuilder } from "./CustomStrategyBuilder";
+import { SetupWarnings } from "./SetupWarnings";
 import { StrategyForm } from "./StrategyForm";
 import { StrategyResults } from "./StrategyResults";
 import { StrategyTelemetry } from "./StrategyTelemetry";
+
+const STORAGE_KEY = "race-strategy-simulator:v1";
+
+type PersistedSimulatorState = {
+  config: RaceConfig;
+  customStints: Stint[];
+  selectedStrategyId: string | null;
+};
 
 function createBalancedStints(laps: number): Stint[] {
   const firstStint = Math.max(1, Math.round(laps * 0.3));
@@ -39,11 +49,92 @@ function createCustomStrategy(stints: Stint[], raceLaps: number) {
   } satisfies Strategy;
 }
 
-export function RaceStrategySimulator() {
-  const [config, setConfig] = useState<RaceConfig>(DEFAULT_RACE_CONFIG);
-  const [customStints, setCustomStints] = useState<Stint[]>(() =>
-    createBalancedStints(DEFAULT_RACE_CONFIG.laps),
+function isRaceConfig(value: unknown): value is RaceConfig {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const config = value as Record<keyof RaceConfig, unknown>;
+
+  return (
+    typeof config.laps === "number" &&
+    typeof config.baseLapTime === "number" &&
+    typeof config.fuelCapacity === "number" &&
+    typeof config.fuelConsumptionPerLap === "number" &&
+    typeof config.fuelTimePenaltyPerLiter === "number" &&
+    typeof config.tyreWearAggression === "number" &&
+    typeof config.pitStopLoss === "number"
   );
+}
+
+function isStintList(value: unknown): value is Stint[] {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+
+  return value.every(
+    (stint) =>
+      stint &&
+      typeof stint === "object" &&
+      ["soft", "medium", "hard"].includes(
+        (stint as Record<string, unknown>).compound as string,
+      ) &&
+      typeof (stint as Record<string, unknown>).laps === "number",
+  );
+}
+
+function readPersistedState(): PersistedSimulatorState | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(STORAGE_KEY);
+
+    if (!rawValue) {
+      return null;
+    }
+
+    const parsed = JSON.parse(rawValue) as Partial<PersistedSimulatorState>;
+
+    if (!isRaceConfig(parsed.config) || !isStintList(parsed.customStints)) {
+      return null;
+    }
+
+    return {
+      config: parsed.config,
+      customStints: parsed.customStints,
+      selectedStrategyId:
+        typeof parsed.selectedStrategyId === "string"
+          ? parsed.selectedStrategyId
+          : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function createDefaultSimulatorState(): PersistedSimulatorState {
+  return {
+    config: DEFAULT_RACE_CONFIG,
+    customStints: createBalancedStints(DEFAULT_RACE_CONFIG.laps),
+    selectedStrategyId: null,
+  };
+}
+
+export function RaceStrategySimulator() {
+  const [simulatorState, setSimulatorState] = useState<PersistedSimulatorState>(
+    () => readPersistedState() ?? createDefaultSimulatorState(),
+  );
+  const { config, customStints, selectedStrategyId } = simulatorState;
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(simulatorState));
+  }, [simulatorState]);
 
   const results = useMemo(() => {
     const customStrategy = createCustomStrategy(customStints, config.laps);
@@ -53,9 +144,13 @@ export function RaceStrategySimulator() {
 
     return simulateStrategies(config, strategies);
   }, [config, customStints]);
+  const setupWarnings = useMemo(() => getRaceConfigWarnings(config), [config]);
 
   const leader = results[0];
   const closestChaser = results[1];
+  const selectedResult =
+    results.find((result) => result.strategy.id === selectedStrategyId) ??
+    leader;
 
   return (
     <main className="app-shell bg-[#f3f1ed] text-zinc-950">
@@ -124,16 +219,44 @@ export function RaceStrategySimulator() {
 
         <div className="grid gap-5 lg:grid-cols-[390px_1fr] lg:items-start">
           <div className="grid gap-5 lg:sticky lg:top-6">
-            <StrategyForm config={config} onChange={setConfig} />
+            <StrategyForm
+              config={config}
+              onChange={(nextConfig) =>
+                setSimulatorState((currentState) => ({
+                  ...currentState,
+                  config: nextConfig,
+                }))
+              }
+            />
+            <SetupWarnings messages={setupWarnings} />
             <CustomStrategyBuilder
               config={config}
               stints={customStints}
-              onChange={setCustomStints}
+              onChange={(nextStints) =>
+                setSimulatorState((currentState) => ({
+                  ...currentState,
+                  customStints: nextStints,
+                }))
+              }
             />
           </div>
           <div className="grid gap-5">
-            {leader ? <StrategyTelemetry result={leader} /> : null}
-            <StrategyResults results={results} />
+            {selectedResult ? (
+              <StrategyTelemetry
+                result={selectedResult}
+                leaderTime={leader?.totalTime ?? selectedResult.totalTime}
+              />
+            ) : null}
+            <StrategyResults
+              results={results}
+              selectedStrategyId={selectedResult?.strategy.id ?? null}
+              onSelectStrategy={(nextStrategyId) =>
+                setSimulatorState((currentState) => ({
+                  ...currentState,
+                  selectedStrategyId: nextStrategyId,
+                }))
+              }
+            />
           </div>
         </div>
       </div>

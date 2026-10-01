@@ -11,9 +11,19 @@ type StrategyCardProps = {
   result: SimulationResult;
   leaderTime: number;
   rank: number;
+  isSelected: boolean;
+  isLeader: boolean;
+  onSelect: () => void;
 };
 
-export function StrategyCard({ result, leaderTime, rank }: StrategyCardProps) {
+export function StrategyCard({
+  result,
+  leaderTime,
+  rank,
+  isSelected,
+  isLeader,
+  onSelect,
+}: StrategyCardProps) {
   const delta = result.totalTime - leaderTime;
   const totalStintLaps = result.strategy.stints.reduce(
     (total, stint) => total + stint.laps,
@@ -22,8 +32,22 @@ export function StrategyCard({ result, leaderTime, rank }: StrategyCardProps) {
 
   return (
     <article
-      className="strategy-card rounded-lg border border-zinc-200/80 bg-white p-4 shadow-[0_14px_38px_rgb(24_24_27/6%)] sm:p-5"
+      aria-pressed={isSelected}
+      className={`strategy-card pressable cursor-pointer rounded-lg border bg-white p-4 shadow-[0_14px_38px_rgb(24_24_27/6%)] outline-none sm:p-5 ${
+        isSelected
+          ? "border-red-500 ring-2 ring-red-500/15"
+          : "border-zinc-200/80"
+      }`}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      role="button"
       style={{ "--card-index": rank - 1 } as CSSProperties}
+      tabIndex={0}
     >
       <div className="grid gap-5 md:grid-cols-[1fr_auto] md:items-start">
         <div className="min-w-0">
@@ -50,6 +74,18 @@ export function StrategyCard({ result, leaderTime, rank }: StrategyCardProps) {
           <p className="mt-1 text-sm font-semibold text-emerald-700">
             {formatDelta(delta)}
           </p>
+          <div className="mt-3 flex flex-wrap gap-2 md:justify-end">
+            {isLeader ? (
+              <span className="rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                Fastest
+              </span>
+            ) : null}
+            {isSelected ? (
+              <span className="rounded-md bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
+                On chart
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
 

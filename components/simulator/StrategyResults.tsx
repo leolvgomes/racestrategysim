@@ -3,9 +3,15 @@ import { StrategyCard } from "./StrategyCard";
 
 type StrategyResultsProps = {
   results: SimulationResult[];
+  selectedStrategyId: string | null;
+  onSelectStrategy: (strategyId: string) => void;
 };
 
-export function StrategyResults({ results }: StrategyResultsProps) {
+export function StrategyResults({
+  results,
+  selectedStrategyId,
+  onSelectStrategy,
+}: StrategyResultsProps) {
   const leaderTime = results[0]?.totalTime ?? 0;
 
   return (
@@ -31,6 +37,9 @@ export function StrategyResults({ results }: StrategyResultsProps) {
             result={result}
             leaderTime={leaderTime}
             rank={index + 1}
+            isSelected={result.strategy.id === selectedStrategyId}
+            isLeader={index === 0}
+            onSelect={() => onSelectStrategy(result.strategy.id)}
           />
         ))}
       </div>

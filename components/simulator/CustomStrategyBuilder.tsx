@@ -2,6 +2,7 @@
 
 import { TYRE_PROFILES } from "@/lib/simulation/constants";
 import type { RaceConfig, Stint, TyreCompound } from "@/lib/simulation/types";
+import { getStintWarnings } from "@/lib/simulation/validation";
 
 type CustomStrategyBuilderProps = {
   config: RaceConfig;
@@ -19,6 +20,12 @@ export function CustomStrategyBuilder({
   const plannedLaps = stints.reduce((total, stint) => total + stint.laps, 0);
   const remainingLaps = config.laps - plannedLaps;
   const isValid = remainingLaps === 0;
+  const stintWarnings = getStintWarnings(stints);
+  const statusLabel = isValid
+    ? "Pronta"
+    : remainingLaps > 0
+      ? `Faltam ${remainingLaps}`
+      : `Sobram ${Math.abs(remainingLaps)}`;
 
   function updateStint(index: number, patch: Partial<Stint>) {
     onChange(
@@ -33,7 +40,10 @@ export function CustomStrategyBuilder({
       return;
     }
 
-    onChange([...stints, { compound: "medium", laps: Math.max(1, remainingLaps) }]);
+    onChange([
+      ...stints,
+      { compound: "medium", laps: Math.max(1, remainingLaps) },
+    ]);
   }
 
   function removeStint(index: number) {
@@ -75,9 +85,27 @@ export function CustomStrategyBuilder({
               : "bg-amber-50 text-amber-800"
           }`}
         >
-          {isValid ? "Pronta" : `${remainingLaps} laps`}
+          {statusLabel}
         </span>
       </div>
+
+      {stintWarnings.length > 0 ? (
+        <div className="mt-4 grid gap-2">
+          {stintWarnings.slice(0, 2).map((warning) => (
+            <div
+              key={warning.id}
+              className={`rounded-md border p-3 text-sm ${
+                warning.tone === "danger"
+                  ? "border-red-200 bg-red-50 text-red-950"
+                  : "border-amber-200 bg-amber-50 text-amber-950"
+              }`}
+            >
+              <p className="font-semibold">{warning.title}</p>
+              <p className="mt-1 leading-5 opacity-80">{warning.description}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-5 grid gap-3">
         {stints.map((stint, index) => {
@@ -138,7 +166,7 @@ export function CustomStrategyBuilder({
                     value={stint.laps}
                     onChange={(event) =>
                       updateStint(index, {
-                        laps: Math.max(1, Number(event.target.value)),
+                        laps: Math.max(1, Number(event.target.value) || 1),
                       })
                     }
                   />

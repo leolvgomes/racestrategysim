@@ -1,5 +1,6 @@
 import { calculateLapTime, getTotalStintLaps } from "./calculations";
 import { TYRE_PROFILES } from "./constants";
+import { getRaceConfigWarnings } from "./validation";
 import type {
   LapSimulation,
   RaceConfig,
@@ -15,6 +16,12 @@ export function simulateStrategy(
   const warnings: string[] = [];
   let totalTime = 0;
   let currentLap = 1;
+
+  warnings.push(
+    ...getRaceConfigWarnings(config).map(
+      (warning) => `${warning.title}: ${warning.description}`,
+    ),
+  );
 
   for (const [stintIndex, stint] of strategy.stints.entries()) {
     const tyre = TYRE_PROFILES[stint.compound];

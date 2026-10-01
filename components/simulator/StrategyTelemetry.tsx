@@ -1,16 +1,17 @@
 import { TYRE_PROFILES } from "@/lib/simulation/constants";
-import { formatLapTime } from "@/lib/simulation/formatters";
+import { formatDelta, formatLapTime } from "@/lib/simulation/formatters";
 import type { SimulationResult } from "@/lib/simulation/types";
 
 type StrategyTelemetryProps = {
   result: SimulationResult;
+  leaderTime: number;
 };
 
 const WIDTH = 720;
 const HEIGHT = 220;
 const PADDING = 28;
 
-export function StrategyTelemetry({ result }: StrategyTelemetryProps) {
+export function StrategyTelemetry({ result, leaderTime }: StrategyTelemetryProps) {
   const lapTimes = result.laps.map((lap) => lap.lapTime);
   const minTime = Math.min(...lapTimes);
   const maxTime = Math.max(...lapTimes);
@@ -33,6 +34,30 @@ export function StrategyTelemetry({ result }: StrategyTelemetryProps) {
     .join(" ");
 
   const finalLap = result.laps[result.laps.length - 1];
+  const deltaToLeader = result.totalTime - leaderTime;
+  const stintSummaries = result.strategy.stints.map((stint, stintIndex) => {
+    const stintLaps = result.laps.filter((lap) => lap.stintIndex === stintIndex);
+    const stintLapTimes = stintLaps.map((lap) => lap.lapTime);
+    const firstLap = stintLaps[0];
+    const lastLap = stintLaps[stintLaps.length - 1];
+    const totalLapTime = stintLapTimes.reduce((total, time) => total + time, 0);
+    const averageLapTime = totalLapTime / Math.max(1, stintLapTimes.length);
+    const tyreWearDelta =
+      lastLap && firstLap
+        ? lastLap.tyreWearPenalty - firstLap.tyreWearPenalty
+        : 0;
+
+    return {
+      stint,
+      stintIndex,
+      averageLapTime,
+      bestLapTime: Math.min(...stintLapTimes),
+      worstLapTime: Math.max(...stintLapTimes),
+      tyreWearDelta,
+      fromLap: firstLap?.lap ?? 0,
+      toLap: lastLap?.lap ?? 0,
+    };
+  });
 
   return (
     <section className="surface-enter rounded-lg border border-zinc-200/80 bg-white p-4 shadow-[0_16px_44px_rgb(24_24_27/7%)] sm:p-5">
@@ -45,7 +70,7 @@ export function StrategyTelemetry({ result }: StrategyTelemetryProps) {
             Lap time trace
           </h2>
           <p className="mt-2 text-sm text-zinc-500">
-            Melhor estratégia atual: {result.strategy.name}
+            Estratégia selecionada: {result.strategy.name}
           </p>
         </div>
         <div className="text-left sm:text-right">
@@ -116,6 +141,7 @@ export function StrategyTelemetry({ result }: StrategyTelemetryProps) {
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <TelemetryMetric label="Vs best" value={formatDelta(deltaToLeader)} />
         <TelemetryMetric
           label="Final fuel"
           value={`${finalLap?.fuelLoad.toFixed(1) ?? "0.0"} L`}
@@ -124,12 +150,54 @@ export function StrategyTelemetry({ result }: StrategyTelemetryProps) {
           label="Worst lap"
           value={formatLapTime(result.worstLapTime)}
         />
+      </div>
+
+      <div className="mt-3">
         <TelemetryMetric
           label="Stints"
           value={result.strategy.stints
             .map((stint) => TYRE_PROFILES[stint.compound].shortLabel)
             .join(" / ")}
         />
+      </div>
+
+      <div className="mt-5 overflow-hidden rounded-md border border-zinc-200">
+        <div className="grid grid-cols-[1.2fr_0.8fr_1fr_1fr] gap-3 bg-zinc-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+          <span>Stint</span>
+          <span>Laps</span>
+          <span>Avg</span>
+          <span>Wear</span>
+        </div>
+        <div className="divide-y divide-zinc-100">
+          {stintSummaries.map((summary) => {
+            const tyre = TYRE_PROFILES[summary.stint.compound];
+
+            return (
+              <div
+                key={`${summary.stint.compound}-${summary.stintIndex}`}
+                className="grid grid-cols-[1.2fr_0.8fr_1fr_1fr] gap-3 px-3 py-3 text-sm"
+              >
+                <span className="flex min-w-0 items-center gap-2 font-semibold text-zinc-950">
+                  <span className={`block size-2.5 rounded-full ${tyre.colorClass}`} />
+                  <span className="truncate">{tyre.label}</span>
+                </span>
+                <span className="font-mono text-zinc-600">
+                  {summary.fromLap}-{summary.toLap}
+                </span>
+                <span className="font-mono font-semibold text-zinc-950">
+                  {formatLapTime(summary.averageLapTime)}
+                </span>
+                <span className="font-mono text-zinc-600">
+                  +{summary.tyreWearDelta.toFixed(2)}s
+                </span>
+                <span className="col-span-4 text-xs text-zinc-500">
+                  Best {formatLapTime(summary.bestLapTime)} / Worst{" "}
+                  {formatLapTime(summary.worstLapTime)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
